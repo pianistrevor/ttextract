@@ -1,0 +1,5 @@
+# VSCode if applicable
+.vs/
+.vscode/
+# x64 Build targets in case I forgot to delete them
+x64/
