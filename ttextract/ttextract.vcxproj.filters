@@ -18,12 +18,18 @@
     <ClCompile Include="ttextract.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="args.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\unlz2k.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\filereading.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ttextract.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

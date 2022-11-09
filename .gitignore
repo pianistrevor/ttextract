@@ -3,3 +3,4 @@
 .vscode/
 # x64 Build targets in case I forgot to delete them
 x64/
+ttextract/x64/
