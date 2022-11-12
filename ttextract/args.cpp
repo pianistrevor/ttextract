@@ -3,18 +3,6 @@
 #include <iostream>
 #include "ttextract.h"
 
-std::string nameOfAlg(int packedType) {
-    switch (packedType) {
-        using enum algType;
-    case 0:
-        return "----";
-    case 2:
-        return "LZ2K";
-    default:
-        return "<unknown>";
-    }
-}
-
 const std::unordered_map<std::string_view, argType> validArgs = {
     {"-h", argType::HELP},      {"--help", argType::HELP},
     {"-u", argType::UNPACK},    {"--unpack", argType::UNPACK},
