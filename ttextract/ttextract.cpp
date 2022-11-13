@@ -13,7 +13,6 @@
 #include <unordered_map>
 #include <vector>
 
-
 bool initialized = false;
 char *outfileBuffer;
 
@@ -30,87 +29,77 @@ constexpr std::string nameOfAlg(int packedType) {
   case 2:
     return "LZ2K";
   default:
-    return "<unknown>";
+    return "????";
   }
 }
 
-const std::vector<int> validSignatures{-1, -2, -3};
+const std::vector<int> validSignatures{-1, -2, -3, -4};
 
 void init() {
   // 1 MB file output buffer
   outfileBuffer = new char[0x100000];
 }
 
-int main(int argc, char* argv[]) {
-    if (!initialized) {
-        init();
-        initialized = true;
-    }
-    cmdlineArgs args;
-    try {
-        args = parseArgs(argc, argv);
-    }
-    catch (int errorCode) {
-        return errorCode;
-    }
-    std::ifstream in(static_cast<std::string>(args.fileName),
-        std::ios::in | std::ios::binary);
-    if (!in) {
-        std::cerr << "Cannot open source file.\n";
-        return 1;
-    }
-    if (args.isUnpack) {
-        // TODO: Replace
-        std::ofstream dest(args.outName, std::ios::out | std::ios::binary);
-        unlz2k(in, dest);
-        return 0;
-    }
-    in.seekg(0, std::ios_base::end);
-    size_t fileSize = in.tellg();
-    in.seekg(0);
-    // First word of file should determine what type of file we're extracting
-    int firstWord = readUint32(in, ENDIAN::little);
-    if (firstWord == 0x12345678) {
-        // Handle FPK file
-        try {
-            handleFPK(in, fileSize, args);
-        }
-        catch (int errorCode) {
-            return errorCode;
-        }
-        catch (const std::exception& e) {
-            std::cout << "Error: " << e.what();
-        }
-    }
-
- else if (firstWord > fileSize) {
-        // firstWord is 2s complement of offset >> 8
-        try {
-            handleDAT(in, fileSize, args, -firstWord << 8);
-        }
-        catch (int errorCode) {
-            return errorCode;
-        }
-        catch (const std::exception& e) {
-            std::cout << "Error: " << e.what();
-        }
- } 
- else if (firstWord < fileSize) {
-    // Handle DAT file
-    try {
-      handleDAT(in, fileSize, args, firstWord);
-    }
-    catch (int errorCode) {
-        return errorCode;
-    }
-    catch (const std::exception& e) {
-        std::cout << "Error: " << e.what();
-    }
-  } else {
-    logError("Unrecognized file type.");
+int main(int argc, char *argv[]) {
+  if (!initialized) {
+    init();
+    initialized = true;
+  }
+  cmdlineArgs args;
+  try {
+    args = parseArgs(argc, argv);
+  } catch (int errorCode) {
+    return errorCode;
+  }
+  std::ifstream in(static_cast<std::string>(args.fileName),
+                   std::ios::in | std::ios::binary);
+  if (!in) {
+    std::cerr << "Cannot open source file.\n";
     return 1;
   }
-  return 0;
+  if (args.isUnpack) {
+    // TODO: Replace
+    std::ofstream dest(args.outName, std::ios::out | std::ios::binary);
+    unlz2k(in, dest);
+    return 0;
+  }
+  in.seekg(0, std::ios_base::end);
+  size_t fileSize = in.tellg();
+  in.seekg(0);
+  // First word of file should determine what type of file we're extracting
+  int firstWord = readUint32(in, ENDIAN::little);
+  if (firstWord == 0x12345678) {
+    // Assume .FPK
+    try {
+      handleFPK(in, fileSize, args);
+    } catch (int errorCode) {
+      std::cerr << "Program exited with code " << errorCode << '\n';
+      return errorCode;
+    } catch (const std::exception &e) {
+      std::cerr << "Error: " << e.what();
+      return 1;
+    }
+    return 0;
+  } else {
+    // Assume .DAT
+    uint32_t fileInfoOffset = firstWord;
+    // If larger than end of file, try 2s complement >> 8
+    if (firstWord > fileSize) {
+      fileInfoOffset = (~fileInfoOffset + 1) << 8;
+    }
+    try {
+      handleDAT(in, fileSize, args, fileInfoOffset);
+    } catch (int errorCode) {
+      std::cerr << "Program exited with code " << errorCode << '\n';
+      return errorCode;
+    } catch (const std::exception &e) {
+      std::cerr << "Error: " << e.what();
+      return 1;
+    }
+    return 0;
+  }
+  logError("Unrecognized archive type.");
+  return 1;
 }
 
 std::string readName(std::ifstream &src, size_t offsetInFile) {
@@ -228,7 +217,7 @@ void handleDAT(std::ifstream &src, size_t fileSize, cmdlineArgs &args,
   std::unordered_map<uint16_t, std::string> itemDirs;
   for (uint16_t nameOffset = 0; nameOffset < numNames; ++nameOffset) {
     bool isFolder = false, isPacked = false;
-    std::string itemDir{""};
+    std::string itemName{""};
     int fileID = -1;
     int16_t readType = readInt16(src, ENDIAN::little);
     if (readType > 0) {
@@ -239,29 +228,29 @@ void handleDAT(std::ifstream &src, size_t fileSize, cmdlineArgs &args,
     }
     int16_t pathType = readInt16(src, ENDIAN::little);
     if (pathType > 0) {
-      itemDir = itemDirs.at(pathType);
+      itemName = itemDirs.at(pathType);
     } else {
-      itemDir = currentDir;
+      itemName = currentDir;
     }
-    itemDirs[nameOffset] = itemDir;
+    itemDirs[nameOffset] = itemName;
     uint32_t nameDataRelativeOffset = readUint32(src, ENDIAN::little);
 
     // Get name
-    auto itemName = readName(src, static_cast<size_t>(nameDataOffset) +
+    auto name = readName(src, static_cast<size_t>(nameDataOffset) +
                                       nameDataRelativeOffset);
-    if (!itemName.empty()) {
-      itemDir += '\\';
+    if (!name.empty()) {
+      itemName += '\\';
     }
-    itemDir += itemName;
+    itemName += name;
 
     if (isFolder) {
-      if (!itemDir.empty()) {
-        currentDir = itemDir;
+      if (!itemName.empty()) {
+        currentDir = itemName;
       }
     } else {
       uint32_t fileIndex;
       if (hasCRCs) {
-        auto analysisName = itemDir.substr(1);
+        auto analysisName = itemName.substr(1);
         uint32_t crc = FNV_BASIS;
         for (auto &c : analysisName) {
           crc = (crc ^ toupper(c)) * FNV_PRIME & 0xFFFFFFFF;
@@ -281,15 +270,12 @@ void handleDAT(std::ifstream &src, size_t fileSize, cmdlineArgs &args,
       File info table items are 16 bytes long.
 
       4 bytes = absolute offset of data
-          Signature -3 multiplies it by 256
+          Signature other than -1 shifts left 8 bits
       4 bytes = size of file (archived)
       4 bytes = size of file (uncompressed)
-          Signature -1 expects this to match
-      3 bytes = packed type
-          Signature -1 expects 0
-          Signature -3 expects either 0 or 2 thus far
-      1 byte  = fine offset from the given offset
-          Signature -1 expects this to be 0
+      1 byte  = packed type
+      2 bytes = unknown??
+      1 byte  = byte offset from the given offset
       */
       uint32_t offset;
       uint32_t packedSize;
@@ -298,33 +284,19 @@ void handleDAT(std::ifstream &src, size_t fileSize, cmdlineArgs &args,
       fileIndex = fileInfoOffset + (fileIndex << 4);
       auto prevOffset = src.tellg();
       src.seekg(fileIndex);
-      if (signature == -1) {
-        offset = readUint32(src, ENDIAN::little);
-        packedSize = readUint32(src, ENDIAN::little);
-        unpackedSize = readUint32(src, ENDIAN::little);
-        if (packedSize != unpackedSize) {
-          logError("Unknown situation, file sizes do not match.");
-          throw 1;
-        }
-        auto nextFour = readUint32(src, ENDIAN::little);
-        packedType = (nextFour & ~0xFF) >> 8;
-        offset += nextFour & 0xFF;
-        if (packedType != 0) {
-          logError("Unknown situation, packed type not zero.");
-          throw 1;
-        }
-      } else {
-        offset = readUint32(src, ENDIAN::little) << 8;
-        packedSize = readUint32(src, ENDIAN::little);
-        unpackedSize = readUint32(src, ENDIAN::little);
-        auto nextFour = readUint32(src, ENDIAN::little);
-        packedType = nextFour & 0xFFFFFF;
-        offset += nextFour >> 8;
-        isPacked = packedSize != unpackedSize;
+      offset = readUint32(src, ENDIAN::little);
+      if (signature != -1) {
+        offset <<= 8;
       }
+      packedSize = readUint32(src, ENDIAN::little);
+      unpackedSize = readUint32(src, ENDIAN::little);
+      auto nextFour = readUint32(src, ENDIAN::little);
+      packedType = nextFour & 0xFF;
+      offset += nextFour >> 24;
+      isPacked = packedSize != unpackedSize;
       std::string outputDir = args.outDir + currentDir;
-      std::string outputItem = args.outDir + itemDir;
-      std::cout << std::format("{:<8X}\t{:<8X}\t{:<8X}\t{}\t{}\n", offset,
+      std::string outputItem = args.outDir + itemName;
+      std::cout << std::format("{:0>8X}\t{:<8X}\t{:<8X}\t{}\t{}\n", offset,
                                packedSize, unpackedSize, nameOfAlg(packedType),
                                outputItem);
       if (!std::filesystem::is_directory(outputDir)) {

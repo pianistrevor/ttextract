@@ -106,7 +106,6 @@
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>D:\Trevor\Code\Lego Research\ttextract\ttextract\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <Optimization>MaxSpeed</Optimization>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
